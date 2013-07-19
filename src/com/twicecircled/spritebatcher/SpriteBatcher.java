@@ -17,14 +17,6 @@
 
 package com.twicecircled.spritebatcher;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.FloatBuffer;
-import java.nio.ShortBuffer;
-import java.util.ArrayList;
-import java.util.Iterator;
-import javax.microedition.khronos.egl.EGLConfig;
-import javax.microedition.khronos.opengles.GL10;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -34,6 +26,15 @@ import android.opengl.GLSurfaceView.Renderer;
 import android.opengl.GLUtils;
 import android.util.Log;
 import android.util.SparseArray;
+
+import javax.microedition.khronos.egl.EGLConfig;
+import javax.microedition.khronos.opengles.GL10;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
+import java.nio.ShortBuffer;
+import java.util.ArrayList;
+import java.util.Iterator;
 
 public class SpriteBatcher implements Renderer {
 
@@ -53,6 +54,8 @@ public class SpriteBatcher implements Renderer {
 	// Needed to load bitmaps into OpenGL
 	Resources resources;
 
+	private boolean texturesLoaded = false;
+
 	// Resource types
 	private static final String DRAWABLE = "drawable";
 	private static final String STRING = "string";
@@ -64,21 +67,32 @@ public class SpriteBatcher implements Renderer {
 	 * Constructor.
 	 * 
 	 * @param resources
-	 * @param resourceIds
-	 *            valid resource ids are R.drawable.xxx for normal sprites or
-	 *            R.String.xxx where the string resource contains a path to a
-	 *            font.
+	 */
+	public SpriteBatcher(Resources resources) {
+		// Need a reference to resources to load textures later
+		this.resources = resources;
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param resources
 	 * @param drawer
 	 *            object implementing Drawer interface
 	 */
-	public SpriteBatcher(Resources resources, int[] resourceIds, Drawer drawer) {
+	public SpriteBatcher(Resources resources, Drawer drawer) {
 		// Need a reference to resources to load textures later
 		this.resources = resources;
 
+		setDrawer(drawer);
+	}
+
+	public void setDrawer(Drawer drawer){
 		// Create texture objects for each resource id
-		setUpTextureObjects(resources, resourceIds);
+		setUpTextureObjects(resources, drawer.getResourceIds());
 
 		this.drawer = drawer;
+		texturesLoaded = false;
 	}
 
 	private void setUpTextureObjects(Resources resources, int[] resourceIds) {
@@ -131,6 +145,29 @@ public class SpriteBatcher implements Renderer {
 
 	@Override
 	public void onDrawFrame(GL10 gl) {
+		if(drawer == null) return;
+
+		if(!texturesLoaded){
+			// reset/"unbind" prior textures
+			gl.glBindTexture(GL10.GL_TEXTURE_2D, 0);
+
+			// Get unique texture ids
+			int[] textureIds = new int[texturesByResourceId.size()];
+			//gl.glGenTextures(textureIds.length, textureIds, 0);
+
+			// Iterate over textures
+			Texture currentTexture;
+			for (int i = 0; i < texturesByResourceId.size(); i++) {
+				currentTexture = texturesByResourceId.valueAt(i);
+
+				// Assign texture id
+				currentTexture.setTextureId(textureIds[i]);
+				// Load bitmap into openGL
+				addTexture(gl, resources, currentTexture, textureIds[i]);
+			}
+			texturesLoaded = true;
+		}
+
 		// Clears the screen and depth buffer.
 		gl.glClear(GL10.GL_COLOR_BUFFER_BIT | GL10.GL_DEPTH_BUFFER_BIT);
 		// Replace the current matrix with the identity matrix
@@ -190,20 +227,6 @@ public class SpriteBatcher implements Renderer {
 		// Blending on
 		gl.glEnable(GL10.GL_BLEND);
 		gl.glBlendFunc(GL10.GL_SRC_ALPHA, GL10.GL_ONE_MINUS_SRC_ALPHA);
-
-		// Get unique texture ids
-		int[] textureIds = new int[texturesByResourceId.size()];
-		gl.glGenTextures(textureIds.length, textureIds, 0);
-
-		// Iterate over textures
-		Texture currentTexture;
-		for (int i = 0; i < texturesByResourceId.size(); i++) {
-			currentTexture = texturesByResourceId.valueAt(i);
-			// Assign texture id
-			currentTexture.setTextureId(textureIds[i]);
-			// Load bitmap into openGL
-			addTexture(gl, resources, currentTexture, textureIds[i]);
-		}
 	}
 
 	/**
@@ -217,6 +240,8 @@ public class SpriteBatcher implements Renderer {
 	 * @param gl
 	 */
 	public void batchDraw(GL10 gl) {
+		if(drawer == null) return;
+
 		// All the draw commands are already batched together for each seperate
 		// texture tile. Now we loop through each tile and make the draw calls
 		// to OpenGL.
@@ -434,7 +459,6 @@ public class SpriteBatcher implements Renderer {
 	/**
 	 * Draw opaque white text.
 	 * 
-	 * @param gl
 	 * @param resourceId
 	 *            Id of the string resource that contains the path of your font.
 	 *            Should be the same as passed into SpriteBatcher's constructor.
@@ -457,7 +481,6 @@ public class SpriteBatcher implements Renderer {
 	/**
 	 * Draw text with a non-default ARGB values.
 	 * 
-	 * @param gl
 	 * @param resourceId
 	 *            Id of the string resource that contains the path of your font.
 	 *            Should be the same as passed into SpriteBatcher's constructor.

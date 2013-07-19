@@ -29,4 +29,6 @@ public interface Drawer {
 
 	public void onDrawFrame(GL10 gl, SpriteBatcher spriteBatcher);
 
+	public int[] getResourceIds();
+
 }
